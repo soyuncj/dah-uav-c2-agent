@@ -71,11 +71,15 @@ class MockGCS:
         self._refresh_compromise_state()
         event = self._telemetry_event()
         append_jsonl(self.log_path, event)
-        if include_true:
-            return event
-        red_view = dict(event)
-        red_view.pop("true_position")
-        return red_view
+        return self.telemetry_view(event, include_true=include_true)
+
+    def telemetry_view(self, event: dict[str, Any] | None = None, include_true: bool = False) -> dict[str, Any]:
+        self._refresh_compromise_state()
+        view = dict(event if event is not None else self._telemetry_event())
+        if not include_true:
+            view.pop("true_position", None)
+            view.pop("operator_deceived", None)
+        return to_wire(view)
 
     def inject_link_degrade(self, quality: float, hold_s: float, source: Source = Source.RED_AGENT) -> ActionResponse:
         self._tick()

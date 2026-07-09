@@ -23,9 +23,8 @@ class ObservedTarget:
         self.verdicts.append(verdict)
         if self.enforce_blue:
             self.gcs.apply_blue_verdict(verdict)
-        red_view = dict(full_event)
-        red_view.pop("true_position")
-        return red_view
+            return self.gcs.telemetry_view(include_true=False)
+        return self.gcs.telemetry_view(full_event, include_true=False)
 
     def inject_link_degrade(self, quality: float, hold_s: float, source: Any) -> Any:
         return self.gcs.inject_link_degrade(quality=quality, hold_s=hold_s, source=source)
@@ -64,6 +63,7 @@ def run_case(secure: bool, log_path: Path) -> dict:
         "blue_last_verdict": verdict,
         "blue_verdict_count": len(target.verdicts),
         "red_trace_steps": len(red_trace["trace"]),
+        "red_trace": red_trace["trace"],
     }
 
 

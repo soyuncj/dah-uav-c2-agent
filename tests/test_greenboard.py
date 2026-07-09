@@ -32,6 +32,21 @@ class GreenboardScenarioTest(unittest.TestCase):
         self.assertEqual(result["blue_verdict"]["availability_impact"], 0)
         self.assertLess(result["mission"]["distance_reported_to_true_m"], 50.0)
         self.assertGreater(result["blue_verdict_count"], 1)
+        self.assertTrue(
+            any(
+                step["phase"] == "decide" and step["result"] == "spoof neutralized"
+                for step in result["red_trace"]
+            )
+        )
+
+    def test_red_view_does_not_include_ground_truth_labels(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_case(secure=True, log_path=Path(tmp) / "secure.jsonl")
+        observed_events = [step["result"] for step in result["red_trace"] if step["phase"] == "observe"]
+        self.assertTrue(observed_events)
+        for event in observed_events:
+            self.assertNotIn("true_position", event)
+            self.assertNotIn("operator_deceived", event)
 
 
 class PolicyUnitTest(unittest.TestCase):

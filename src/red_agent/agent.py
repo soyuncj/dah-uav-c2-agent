@@ -59,7 +59,7 @@ class RedAgent:
         self._record("act", "spoof GPS reported position while keeping board green", gps_response)
         spoof_state = self.target.telemetry()
         self._record("observe", "read telemetry after spoof", spoof_state)
-        if spoof_state["reported_position"] == spoof_state["ins_position"]:
+        if _positions_close(spoof_state["reported_position"], spoof_state["ins_position"]):
             self._record("decide", "reported position was rolled back by defense, stop escalation", "spoof neutralized")
         else:
             self._record("decide", "reported position still diverges from INS, keep mission deception active", "spoof active")
@@ -67,3 +67,21 @@ class RedAgent:
 
     def _record(self, phase: str, thought: str, result: Any) -> None:
         self.trace.append({"phase": phase, "thought": thought, "result": to_wire(result)})
+
+
+def _positions_close(a: Any, b: Any, tolerance: float = 1e-9) -> bool:
+    return (
+        abs(_coord(a, "lat") - _coord(b, "lat")) <= tolerance
+        and abs(_coord(a, "lon") - _coord(b, "lon")) <= tolerance
+        and abs(_coord(a, "alt_m", default=0.0) - _coord(b, "alt_m", default=0.0)) <= tolerance
+    )
+
+
+def _coord(position: Any, key: str, default: float | None = None) -> float:
+    if isinstance(position, dict):
+        if default is not None:
+            return float(position.get(key, default))
+        return float(position[key])
+    if default is not None:
+        return float(getattr(position, key, default))
+    return float(getattr(position, key))
