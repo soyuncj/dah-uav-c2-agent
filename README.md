@@ -20,7 +20,7 @@ blue agent는 telemetry와 verdict를 관찰하며 다음 항목을 검사합니
 1. GPS reported position과 INS position의 발산 여부.
 2. home 좌표와 pinned home 좌표의 불일치 여부.
 3. 페일세이프 발동과 GPS jump 사이의 시간 상관관계.
-4. 가용성을 보존하는 block/flag 대응.
+4. 가용성을 보존하는 block/flag 대응과 spoof 롤백 집행.
 
 ## 실행
 
@@ -30,8 +30,8 @@ PYTHONPATH=src python3 -m demo.run_greenboard
 
 예상 요약:
 
-- `SECURE=false`: 공격이 성공하고, availability는 높게 유지되며, 화면은 정상처럼 보입니다.
-- `SECURE=true`: blue가 GPS spoof를 탐지·무효화하고, 정상 telemetry availability를 유지합니다.
+- `SECURE=false`: 공격이 성공하고, availability는 높게 유지되며, operator deception 상태가 남습니다.
+- `SECURE=true`: blue가 GPS spoof를 탐지하고 simulator가 그 verdict를 집행해 reported position을 롤백합니다.
 
 ## 테스트
 
@@ -58,3 +58,5 @@ docs/interface_review.md    인터페이스 검토 메모
 - 마감일과 의존성 리스크를 줄이기 위해 FastAPI 엔드포인트 대신 로컬 시뮬레이터를 사용합니다.
 - `POST /api/_inject/link`, `POST /api/_inject/gps`는 같은 의미를 가진 시뮬레이터 메서드로 표현했습니다.
 - 제출 인터페이스의 필드와 enum 이름은 유지했지만, 로컬 환경에 Pydantic이 설치되어 있지 않아 `wire.py`는 Python dataclass 기반으로 구현했습니다.
+- 본 testbed는 MAVLink telemetry stream의 논리적 신뢰 경계만 모델링하며, RF 물리 계층과 수신기 하드웨어 취약점은 범위 밖입니다.
+- 현재 blue agent는 규칙 기반 탐지와 verdict 집행까지 구현되어 있으며, LLM triage는 본선 확장 항목으로 남겨두었습니다.

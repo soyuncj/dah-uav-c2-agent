@@ -4,6 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from common.policy import evaluate_telemetry
+from common.wire import FailsafeState, Reason, Rule, Verdict, Position
 from demo.run_greenboard import run_case
 
 
@@ -12,15 +14,61 @@ class GreenboardScenarioTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             result = run_case(secure=False, log_path=Path(tmp) / "insecure.jsonl")
         self.assertTrue(result["mission"]["compromised"])
+        self.assertTrue(result["mission"]["operator_deceived"])
         self.assertEqual(result["mission"]["availability"], 100)
         self.assertEqual(result["mission"]["mode"], "RTL")
+        self.assertGreater(result["mission"]["distance_reported_to_true_m"], 50.0)
+        self.assertGreater(result["blue_verdict_count"], 1)
 
     def test_secure_case_blocks_spoof_and_preserves_availability(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             result = run_case(secure=True, log_path=Path(tmp) / "secure.jsonl")
         self.assertFalse(result["mission"]["compromised"])
+        self.assertFalse(result["mission"]["operator_deceived"])
         self.assertEqual(result["mission"]["availability"], 100)
-        self.assertIn(result["blue_verdict"]["verdict"], {"allow", "flag"})
+        self.assertEqual(result["blue_verdict"]["verdict"], "block")
+        self.assertGreater(result["blue_verdict_count"], 1)
+
+
+class PolicyUnitTest(unittest.TestCase):
+    def test_divergence_blocks(self) -> None:
+        detection = evaluate_telemetry(
+            reported=Position(lat=36.0, lon=127.0),
+            ins=Position(lat=36.0009, lon=127.0),
+            reported_home=Position(lat=36.0, lon=127.0),
+            pinned_home=Position(lat=36.0, lon=127.0),
+            failsafe=FailsafeState.TRIGGERED,
+            seconds_since_gps_jump=1.0,
+        )
+        self.assertEqual(detection.verdict, Verdict.BLOCK)
+        self.assertEqual(detection.rule, Rule.CROSS_SOURCE_CONSISTENCY)
+        self.assertEqual(detection.reason, Reason.GPS_INS_DIVERGENCE)
+
+    def test_home_pin_mismatch_blocks(self) -> None:
+        detection = evaluate_telemetry(
+            reported=Position(lat=36.0, lon=127.0),
+            ins=Position(lat=36.0, lon=127.0),
+            reported_home=Position(lat=36.0005, lon=127.0),
+            pinned_home=Position(lat=36.0, lon=127.0),
+            failsafe=FailsafeState.NOMINAL,
+            seconds_since_gps_jump=None,
+        )
+        self.assertEqual(detection.verdict, Verdict.BLOCK)
+        self.assertEqual(detection.rule, Rule.HOME_PIN)
+        self.assertEqual(detection.reason, Reason.HOME_PIN_MISMATCH)
+
+    def test_failsafe_gps_correlation_flags(self) -> None:
+        detection = evaluate_telemetry(
+            reported=Position(lat=36.0, lon=127.0),
+            ins=Position(lat=36.0, lon=127.0),
+            reported_home=Position(lat=36.0, lon=127.0),
+            pinned_home=Position(lat=36.0, lon=127.0),
+            failsafe=FailsafeState.TRIGGERED,
+            seconds_since_gps_jump=1.5,
+        )
+        self.assertEqual(detection.verdict, Verdict.FLAG)
+        self.assertEqual(detection.rule, Rule.FAILSAFE_GPS_CORRELATION)
+        self.assertEqual(detection.reason, Reason.FAILSAFE_GPS_CORRELATION)
 
 
 if __name__ == "__main__":

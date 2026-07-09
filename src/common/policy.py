@@ -52,7 +52,7 @@ def evaluate_telemetry(
 
     return Detection(
         verdict=Verdict.ALLOW,
-        rule=Rule.LLM_TRIAGE,
+        rule=Rule.TELEMETRY_BASELINE,
         reason=Reason.OK,
         detail="telemetry remains internally consistent",
         confidence=0.6,

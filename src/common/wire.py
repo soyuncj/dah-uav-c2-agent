@@ -56,7 +56,7 @@ class Rule(str, Enum):
     CROSS_SOURCE_CONSISTENCY = "cross_source_consistency"
     HOME_PIN = "home_pin"
     FAILSAFE_GPS_CORRELATION = "failsafe_gps_correlation"
-    LLM_TRIAGE = "llm_triage"
+    TELEMETRY_BASELINE = "telemetry_baseline"
 
 
 @dataclass(frozen=True)
