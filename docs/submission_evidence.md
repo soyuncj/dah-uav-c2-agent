@@ -21,8 +21,10 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 
 | 모드 | 공격 결과 | 방어 결과 | 가용성 |
 |---|---|---|---|
-| `SECURE=false` | `compromised=true`, `operator_deceived=true`, reported/true 불일치 645.6m 유지 | blue verdict `block`은 기록되지만 집행되지 않음 | 100 |
-| `SECURE=true` | `compromised=false`, blue verdict 집행 후 reported position 롤백 | action verdict는 `block`, 후속 telemetry verdict는 `flag` | 100 |
+| `SECURE=false` | `compromised=true`, `operator_deceived=true`, reported-true 불일치 645.6m 유지 | blue verdict `block`은 기록되지만 집행되지 않음 | 85 (링크 열화, 제어권 유지) |
+| `SECURE=true` | `compromised=false`, blue verdict 집행 후 reported-INS 롤백 | action verdict `block`, 후속 telemetry verdict `flag`, `availability_impact=0` | 85 (blue 대응이 가용성 추가 훼손 없음) |
+
+참고: blue 탐지 신호(reported-INS 637.9m)와 정답 라벨(reported-true 645.6m)은 INS 편이 때문에 서로 다른 값이며, secure 롤백 후 잔여 reported-true는 8.0m(모델링된 INS 편이)로 탐지 임계(50m) 미만이다.
 
 ## 로그 증거
 
@@ -41,14 +43,15 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 
 ## 공격-방어 추적 매트릭스
 
-| 공격 단계 | 관측 신호 | 방어 통제 | AI agent 역할 | 증거 |
-|---|---|---|---|---|
-| telemetry 정찰 | `GET /api/telemetry` 의미의 state read | 정상 telemetry 유지 | red: 현재 모드/좌표 관측 | red trace 1단계, JSONL telemetry |
-| 링크 열화 | `link_quality<0.30`, `failsafe_state=triggered` | 지속 DoS가 아닌 RTL 상태 관찰 | red: 재시도 포함 `link_degrade` 수행, blue: telemetry 연속 검사 | `logs/*` inject + telemetry |
-| GPS spoof | reported position만 편이 | GPS-INS 교차출처 정합성 검사 | red: `gps_spoof`, blue: divergence 탐지 | insecure/secure log verdict |
-| green-board 유지 | `availability=100`, `mode=RTL` | 정상 흐름 차단 없이 악성 신호만 판단 | blue: availability impact 0 verdict | demo summary |
-| secure 대응 | blue `block` verdict 후 simulator rollback | spoof 무효화 + 후속 telemetry `flag` 기록 | blue: 판정, simulator: 집행 | secure log verdict sequence |
+| 공격 단계 | 관측 신호 | 방어 통제 | 탐지 규칙/임계 | 통제가 실패하는 조건 | AI agent 역할 | 증거 |
+|---|---|---|---|---|---|---|
+| telemetry 정찰 | state read (`GET /api/telemetry` 의미) | 정상 telemetry 유지 | 상태 관찰 | 해당 없음 | red: 모드/좌표 관측 | red trace 1단계, JSONL telemetry |
+| 링크 열화 -> RTL 유도 | `link_quality<0.30`, `failsafe=triggered`, `mode=RTL` | 지속 DoS 아님을 관찰, 페일세이프 정상 처리 | 임계 0.30/3.0s | 링크 열화를 정상 RTL과 구분하기 어려울 때 | red: 재시도 포함 `link_degrade`, blue: telemetry 연속 검사 | `logs/*` inject + telemetry |
+| GPS spoof (reported만 편이) | reported-INS 637.9m 발산 | 교차출처 정합성 검사 후 block + 롤백 | `>50m` -> block | INS 드리프트가 임계 근처일 때(현 데모는 무노이즈) | red: `gps_spoof`, blue: divergence 탐지 | insecure/secure log verdict |
+| home 재지정 시도 | reported_home-pinned_home 편차 | home-pin 무결성 검사 | `>30m` -> block | pinned_home 자체가 오염된 경우 | blue: home 무결성 판정 | policy 유닛테스트 |
+| green-board 유지 | `mode=RTL`, 보안경보 없음, availability 85 | 정상 흐름 차단 없이 악성 신호만 판단 | `availability_impact=0` | "green"이 RTL 배너로 노출될 때(무경보 정의로 한정) | blue: availability 무손실 verdict | demo summary |
+| secure 대응 | blue `block` verdict 후 simulator rollback | spoof 무효화 + 후속 telemetry `flag` 기록 | window 5s -> flag | GPS jump가 상관 윈도 밖일 때 미탐 | blue: 판정, simulator: 집행 | secure log verdict sequence |
 
 ## 보고서에 쓸 한 문장
 
-본 프로토타입은 실제 UAV/RF/GNSS 시스템을 대상으로 하지 않고, UAV C2 신뢰 경계를 추상화한 mock testbed에서 Green-Board Hijack 공격과 가용성 보존형 blue agent 대응을 재현한다. 데모는 `SECURE=false`에서 operator deception 기반 임무 오염이 유지되고, `SECURE=true`에서 blue verdict가 simulator에 집행되어 GPS spoof가 롤백되며 availability가 100으로 유지됨을 JSONL 로그와 테스트로 입증한다.
+본 프로토타입은 실제 UAV/RF/GNSS 시스템을 대상으로 하지 않고, UAV C2 신뢰 경계를 추상화한 mock testbed에서 Green-Board Hijack 공격과 가용성 보존형 blue 에이전트 대응을 재현한다. 데모는 `SECURE=false`에서 operator deception 기반 임무 오염(reported-true 645.6m)이 유지되고, `SECURE=true`에서 blue verdict가 simulator에 집행되어 GPS spoof가 INS 기준으로 롤백되며(잔여 8.0m, 탐지 임계 미만) 링크 열화 하에서도 제어권과 임무 지속성이 유지됨을 JSONL 로그와 7개 단위·시나리오 테스트로 입증한다. 이때 blue의 탐지 신호(reported-INS)는 정답 라벨(reported-true)과 독립된 값이므로 방어가 정답을 그대로 참조하는 순환 구조가 아니다.

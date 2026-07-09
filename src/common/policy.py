@@ -4,10 +4,14 @@ from __future__ import annotations
 from common.geo import haversine_m
 from common.wire import Detection, FailsafeState, Position, Reason, Rule, Verdict
 
+# Detection thresholds (blue-only knowledge).
 GPS_INS_DIVERGENCE_TOLERANCE_M = 50.0
 HOME_PIN_TOLERANCE_M = 30.0
+
+# Failsafe modelling constants shared with the simulator so the magic numbers
+# live in exactly one place.
 LINK_FAILSAFE_THRESHOLD = 0.30
-LINK_FAILSAFE_DURATION_S = 3.0
+MIN_FAILSAFE_HOLD_S = 3.0
 FAILSAFE_GPS_CORR_WINDOW_S = 5.0
 
 

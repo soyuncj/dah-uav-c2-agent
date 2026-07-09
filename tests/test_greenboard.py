@@ -15,7 +15,8 @@ class GreenboardScenarioTest(unittest.TestCase):
             result = run_case(secure=False, log_path=Path(tmp) / "insecure.jsonl")
         self.assertTrue(result["mission"]["compromised"])
         self.assertTrue(result["mission"]["operator_deceived"])
-        self.assertEqual(result["mission"]["availability"], 100)
+        self.assertEqual(result["mission"]["availability"], 85)
+        self.assertTrue(result["mission"]["mission_continuity"])
         self.assertEqual(result["mission"]["mode"], "RTL")
         self.assertGreater(result["mission"]["distance_reported_to_true_m"], 50.0)
         self.assertGreater(result["blue_verdict_count"], 1)
@@ -25,12 +26,39 @@ class GreenboardScenarioTest(unittest.TestCase):
             result = run_case(secure=True, log_path=Path(tmp) / "secure.jsonl")
         self.assertFalse(result["mission"]["compromised"])
         self.assertFalse(result["mission"]["operator_deceived"])
-        self.assertEqual(result["mission"]["availability"], 100)
+        self.assertEqual(result["mission"]["availability"], 85)
+        self.assertTrue(result["mission"]["mission_continuity"])
         self.assertEqual(result["blue_verdict"]["verdict"], "block")
+        self.assertEqual(result["blue_verdict"]["availability_impact"], 0)
+        self.assertLess(result["mission"]["distance_reported_to_true_m"], 50.0)
         self.assertGreater(result["blue_verdict_count"], 1)
 
 
 class PolicyUnitTest(unittest.TestCase):
+    def test_clean_telemetry_allows(self) -> None:
+        detection = evaluate_telemetry(
+            reported=Position(lat=36.0, lon=127.0),
+            ins=Position(lat=36.0, lon=127.0),
+            reported_home=Position(lat=36.0, lon=127.0),
+            pinned_home=Position(lat=36.0, lon=127.0),
+            failsafe=FailsafeState.NOMINAL,
+            seconds_since_gps_jump=None,
+        )
+        self.assertEqual(detection.verdict, Verdict.ALLOW)
+        self.assertEqual(detection.rule, Rule.TELEMETRY_BASELINE)
+        self.assertEqual(detection.reason, Reason.OK)
+
+    def test_small_ins_bias_does_not_false_positive(self) -> None:
+        detection = evaluate_telemetry(
+            reported=Position(lat=36.0, lon=127.0),
+            ins=Position(lat=36.0000719, lon=127.0),
+            reported_home=Position(lat=36.0, lon=127.0),
+            pinned_home=Position(lat=36.0, lon=127.0),
+            failsafe=FailsafeState.NOMINAL,
+            seconds_since_gps_jump=None,
+        )
+        self.assertEqual(detection.verdict, Verdict.ALLOW)
+
     def test_divergence_blocks(self) -> None:
         detection = evaluate_telemetry(
             reported=Position(lat=36.0, lon=127.0),

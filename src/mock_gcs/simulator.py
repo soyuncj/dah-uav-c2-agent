@@ -20,6 +20,12 @@ from common.wire import (
     to_wire,
 )
 
+INS_BIAS_NORTH_M = 8.0
+
+AVAIL_NOMINAL = 100
+AVAIL_LINK_DEGRADED = 85
+AVAIL_LINK_LOST = 40
+
 
 @dataclass
 class SimState:
@@ -38,6 +44,7 @@ class SimState:
     link_quality: float = 1.0
     failsafe_state: FailsafeState = FailsafeState.NOMINAL
     availability: int = 100
+    mission_continuity: bool = True
     compromised: bool = False
     operator_deceived: bool = False
     gps_jump_seq: int | None = None
@@ -48,14 +55,15 @@ class SimState:
 class MockGCS:
     def __init__(self, secure: bool, log_path: str | Path = "logs/events.jsonl") -> None:
         home = Position(lat=36.350411, lon=127.384548, alt_m=120.0)
+        true_pos = geo.offset_m(home, north_m=420.0, east_m=120.0)
         self.secure = secure
         self.log_path = Path(log_path)
         self.state = SimState(
             seq=0,
             home=home,
-            true_position=geo.offset_m(home, north_m=420.0, east_m=120.0),
-            reported_position=geo.offset_m(home, north_m=420.0, east_m=120.0),
-            ins_position=geo.offset_m(home, north_m=420.0, east_m=120.0),
+            true_position=true_pos,
+            reported_position=true_pos,
+            ins_position=geo.offset_m(true_pos, north_m=INS_BIAS_NORTH_M, east_m=0.0),
         )
 
     def telemetry(self, include_true: bool = False) -> dict[str, Any]:
@@ -76,9 +84,9 @@ class MockGCS:
         reason = Reason.OK
         self.state.link_quality = max(0.0, min(1.0, quality))
         self._refresh_availability()
-        if self.state.link_quality < 0.30:
+        if self.state.link_quality < policy.LINK_FAILSAFE_THRESHOLD:
             self.state.failsafe_state = FailsafeState.LINK_DEGRADED
-        if self.state.link_quality < 0.30 and hold_s >= 3.0:
+        if self.state.link_quality < policy.LINK_FAILSAFE_THRESHOLD and hold_s >= policy.MIN_FAILSAFE_HOLD_S:
             self.state.failsafe_state = FailsafeState.TRIGGERED
             self.state.mode = Mode.RTL
             if self.state.failsafe_triggered_ts is None:
@@ -141,8 +149,7 @@ class MockGCS:
         if verdict["verdict"] != "block":
             return
         self.state.reported_position = self.state.ins_position
-        self.state.operator_deceived = False
-        self.state.compromised = False
+        self._refresh_compromise_state()
         self._refresh_availability()
 
     def _tick(self) -> None:
@@ -167,6 +174,7 @@ class MockGCS:
             "failsafe_triggered_ts": self.state.failsafe_triggered_ts,
             "home": self.state.home,
             "availability": self.state.availability,
+            "mission_continuity": self.state.mission_continuity,
             "operator_deceived": self.state.operator_deceived,
         }
 
@@ -201,6 +209,7 @@ class MockGCS:
             "compromised": self.state.compromised,
             "operator_deceived": self.state.operator_deceived,
             "availability": self.state.availability,
+            "mission_continuity": self.state.mission_continuity,
             "mode": to_wire(self.state.mode),
             "failsafe_state": to_wire(self.state.failsafe_state),
             "link_quality": self.state.link_quality,
@@ -210,12 +219,19 @@ class MockGCS:
         }
 
     def _refresh_compromise_state(self) -> None:
+        # Blue never sees true_position; compromise is a ground-truth label.
         divergence = geo.haversine_m(self.state.reported_position, self.state.true_position)
         self.state.operator_deceived = divergence > policy.GPS_INS_DIVERGENCE_TOLERANCE_M
         self.state.compromised = self.state.operator_deceived
 
     def _refresh_availability(self) -> None:
+        # RTL under a degraded link is partial service loss, not total outage.
         if self.state.link_quality <= 0.05:
-            self.state.availability = 70
+            self.state.availability = AVAIL_LINK_LOST
+            self.state.mission_continuity = False
+        elif self.state.link_quality < policy.LINK_FAILSAFE_THRESHOLD:
+            self.state.availability = AVAIL_LINK_DEGRADED
+            self.state.mission_continuity = True
         else:
-            self.state.availability = 100
+            self.state.availability = AVAIL_NOMINAL
+            self.state.mission_continuity = True

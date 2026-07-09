@@ -26,3 +26,7 @@ The v2 contract is sufficient for a preliminary-round red/blue agent prototype i
 ## Risk
 
 The supplied `wire.py` uses Pydantic, but this local environment does not have Pydantic installed. The prototype uses dataclasses while preserving enum names and JSON field names.
+
+## Note on Injection Endpoints
+
+`POST /api/_inject/link` 및 `POST /api/_inject/gps`는 실제 HTTP 엔드포인트가 아니라 동일 계약(필드/enum 이름)을 표현한 시뮬레이터 메서드(`inject_link_degrade`, `inject_gps_spoof`)이다. 실제 네트워크 공격을 수행하지 않는다.
