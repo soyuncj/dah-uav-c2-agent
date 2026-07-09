@@ -1,0 +1,4 @@
+# No third-party runtime dependency is required for the minimal stdlib prototype.
+#
+# The upstream interface contract mentions pydantic>=2 for wire.py. This local
+# deliverable uses dataclasses to avoid network/dependency risk on submission day.
