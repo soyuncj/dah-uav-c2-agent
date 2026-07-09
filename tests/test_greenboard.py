@@ -4,9 +4,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from common import geo
 from common.policy import evaluate_telemetry
 from common.wire import FailsafeState, Reason, Rule, Verdict, Position
 from demo.run_greenboard import run_case
+from mock_gcs.simulator import MockGCS
 
 
 class GreenboardScenarioTest(unittest.TestCase):
@@ -48,6 +50,13 @@ class GreenboardScenarioTest(unittest.TestCase):
             self.assertNotIn("true_position", event)
             self.assertNotIn("operator_deceived", event)
 
+    def test_near_total_link_loss_reduces_mission_continuity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            gcs = MockGCS(secure=True, log_path=Path(tmp) / "link_loss.jsonl")
+            response = gcs.inject_link_degrade(quality=0.05, hold_s=3.0)
+        self.assertEqual(response.availability_after, 40)
+        self.assertFalse(gcs.state.mission_continuity)
+
 
 class PolicyUnitTest(unittest.TestCase):
     def test_clean_telemetry_allows(self) -> None:
@@ -73,6 +82,35 @@ class PolicyUnitTest(unittest.TestCase):
             seconds_since_gps_jump=None,
         )
         self.assertEqual(detection.verdict, Verdict.ALLOW)
+
+    def test_near_threshold_spoof_allows_below_tolerance(self) -> None:
+        ins = Position(lat=36.0, lon=127.0)
+        reported = geo.offset_m(ins, north_m=45.0, east_m=0.0)
+        detection = evaluate_telemetry(
+            reported=reported,
+            ins=ins,
+            reported_home=ins,
+            pinned_home=ins,
+            failsafe=FailsafeState.TRIGGERED,
+            seconds_since_gps_jump=None,
+        )
+        self.assertEqual(detection.verdict, Verdict.ALLOW)
+        self.assertEqual(detection.rule, Rule.TELEMETRY_BASELINE)
+
+    def test_near_threshold_spoof_blocks_above_tolerance(self) -> None:
+        ins = Position(lat=36.0, lon=127.0)
+        reported = geo.offset_m(ins, north_m=55.0, east_m=0.0)
+        detection = evaluate_telemetry(
+            reported=reported,
+            ins=ins,
+            reported_home=ins,
+            pinned_home=ins,
+            failsafe=FailsafeState.TRIGGERED,
+            seconds_since_gps_jump=None,
+        )
+        self.assertEqual(detection.verdict, Verdict.BLOCK)
+        self.assertEqual(detection.rule, Rule.CROSS_SOURCE_CONSISTENCY)
+        self.assertEqual(detection.reason, Reason.GPS_INS_DIVERGENCE)
 
     def test_divergence_blocks(self) -> None:
         detection = evaluate_telemetry(

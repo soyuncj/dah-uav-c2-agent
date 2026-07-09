@@ -20,7 +20,7 @@ The v2 contract is sufficient for a preliminary-round red/blue agent prototype i
 |---|---|
 | SECURE=false attack succeeds | `logs/greenboard_insecure.jsonl`, `compromised=true` |
 | SECURE=true or blue blocks spoof | `logs/greenboard_secure.jsonl`, blue verdict |
-| Availability preserved | summary `availability=100` |
+| Availability preserved | demo summary `availability=85`, `mission_continuity=true`, `availability_impact=0` |
 | Red/blue agent loop exists | red trace and blue verdict events |
 
 ## Risk

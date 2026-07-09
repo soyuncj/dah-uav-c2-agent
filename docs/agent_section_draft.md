@@ -6,7 +6,7 @@
 
 ## 신뢰 모델
 
-시뮬레이터는 세 가지 위치 소스를 분리해서 유지한다: 오퍼레이터가 보는 `reported`(GPS 기반), 관성 항법 추정치 `INS`, 그리고 관측 불가능한 지상 진실 `true`이다. INS는 무오차 기준이 아니라 모델링된 편이(약 8m)를 가진다. 따라서 blue가 관측하는 탐지 신호(`reported-INS`)는 정답 라벨을 계산하는 신호(`reported-true`)와 값이 다르며, 방어가 정답을 그대로 베끼는 순환 구조가 아니다.
+시뮬레이터는 세 가지 위치 소스를 분리해서 유지한다: 오퍼레이터가 보는 `reported`(GPS 기반), 관성 항법 추정치 `INS`, 그리고 관측 불가능한 지상 진실 `true`이다. INS는 무오차 기준이 아니라 모델링된 편이(약 8m)를 가진다. 따라서 blue가 관측하는 탐지 신호(`reported-INS`)는 정답 라벨을 계산하는 신호(`reported-true`)와 값이 다르다. 이는 `INS=true`였던 초기 순환 구조를 완화한 것이지만, 현재 INS는 true position의 고정 편이 버전이므로 완전히 독립적인 관측원이라고 주장하지 않는다. 독립적 INS 드리프트와 센서 노이즈 모델링은 본선에서 학습 기반 이상탐지와 함께 도입한다.
 
 ## Red Agent
 
@@ -49,3 +49,10 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 
 - `logs/greenboard_insecure.jsonl`: 방어 미적용 상태에서 링크 열화와 GPS spoof가 수용되어 임무 오염이 발생하는 증거(reported-true 645.6m 유지, availability 85).
 - `logs/greenboard_secure.jsonl`: blue verdict가 simulator에 집행되어 spoof가 롤백되고(reported-INS 0.0m, 잔여 reported-true 8.0m = INS 편이) 가용성이 유지되는 증거.
+
+검증 범위:
+
+- 시나리오 A/B 테스트: `SECURE=false` 공격 성공, `SECURE=true` spoof neutralized.
+- red 관측 경계 테스트: red trace에 `true_position`, `operator_deceived`가 노출되지 않음.
+- policy 경계 테스트: 정상 telemetry allow, INS 8m 편이 무오탐, 45m spoof allow, 55m spoof block.
+- availability 등급 테스트: 링크 상실 구간(`link_quality<=0.05`)에서 availability 40 및 `mission_continuity=false`.
